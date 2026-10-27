@@ -96,19 +96,35 @@ final class StempelDaten {
                     continue;
                 }
                 ConfigurationSection s = spieler.getConfigurationSection(key);
-                if (s == null) continue;
+                if (s == null) {
+                    throw new IllegalStateException("Ungültiger Spielereintrag in " + DATEINAME + ": " + key);
+                }
+                if (!s.getKeys(false).contains("gesamt")) {
+                    throw new IllegalStateException("Fehlende Gesamtzeit in " + DATEINAME + ": " + key);
+                }
 
                 Eintrag e = new Eintrag();
-                e.schichtStart = s.getLong("schichtStart", -1);
-                e.lebenszeichen = s.getLong("lebenszeichen", -1);
-                e.letzteSchicht = s.getLong("letzteSchicht", -1);
-                e.gesamt = Math.max(0, s.getLong("gesamt", 0));   // manipulierte negative Werte abfangen
+                e.schichtStart = leseZeit(s, "schichtStart", -1);
+                e.lebenszeichen = leseZeit(s, "lebenszeichen", -1);
+                e.letzteSchicht = leseZeit(s, "letzteSchicht", -1);
+                e.gesamt = Math.max(0, leseZeit(s, "gesamt", 0));   // manipulierte negative Werte abfangen
                 geladen.put(uuid, e);
             }
         }
         eintraege.clear();
         eintraege.putAll(geladen);
         speichernGesperrt = false;
+    }
+
+    /** Fehlende optionale Werte sind erlaubt, falsch typisierte Werte nicht. */
+    private static long leseZeit(ConfigurationSection eintrag, String feld, long standard) {
+        Object wert = eintrag.get(feld);
+        if (wert == null && !eintrag.getKeys(false).contains(feld)) return standard;
+        if (wert instanceof Byte || wert instanceof Short || wert instanceof Integer || wert instanceof Long) {
+            return ((Number) wert).longValue();
+        }
+        throw new IllegalStateException("Ungültiger Zeitwert in " + DATEINAME + ": "
+                + eintrag.getCurrentPath() + "." + feld);
     }
 
     void speichern() {

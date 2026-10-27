@@ -78,6 +78,20 @@ class InaktivitaetTest {
     }
 
     @Test
+    void gleichzeitigeTimeoutsWerdenZusammenGespeichert() {
+        PlayerMock anna = server.addPlayer("Anna");
+        PlayerMock ben = server.addPlayer("Ben");
+        jetzt.addAndGet(300_000);
+
+        plugin.pruefeInaktivitaet();
+
+        StempelDaten neuGeladen = new StempelDaten(plugin);
+        neuGeladen.laden();
+        assertEquals(300_000, neuGeladen.get(anna.getUniqueId()).gesamt);
+        assertEquals(300_000, neuGeladen.get(ben.getUniqueId()).gesamt);
+    }
+
+    @Test
     void positionsaenderungSetztFristZurueckAberKameradrehungNicht() {
         PlayerMock p = server.addPlayer("Anton");
         StempelDaten.Eintrag e = plugin.daten().get(p.getUniqueId());

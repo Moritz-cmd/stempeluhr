@@ -53,6 +53,31 @@ class StempelDatenPersistenzTest {
     }
 
     @Test
+    void parsebareAberBeschaedigteSpielerdatenWerdenNichtUeberschrieben() throws Exception {
+        UUID uuid = UUID.randomUUID();
+        Path datei = plugin.getDataFolder().toPath().resolve("daten.yml");
+        Files.createDirectories(datei.getParent());
+        String[] defekteDateien = {
+                "spieler:\n  " + uuid + ": kaputt\n",
+                "spieler:\n  " + uuid + ":\n    gesamt: kaputt\n",
+                "spieler:\n  " + uuid + ":\n    letzteSchicht: 1000\n"
+        };
+
+        for (String inhalt : defekteDateien) {
+            byte[] original = inhalt.getBytes(StandardCharsets.UTF_8);
+            Files.write(datei, original);
+            StempelDaten daten = new StempelDaten(plugin);
+            daten.get(uuid).gesamt = 12_345;
+
+            assertThrows(IllegalStateException.class, daten::laden);
+            assertEquals(12_345, daten.get(uuid).gesamt);
+            daten.speichern();
+            assertArrayEquals(original, Files.readAllBytes(datei),
+                    "Beschädigte Einträge dürfen nicht stillschweigend gelöscht werden");
+        }
+    }
+
+    @Test
     void zweiteSpeicherungBehältVorherigeVersionAlsBackup() throws Exception {
         StempelDaten daten = plugin.daten();
         UUID uuid = UUID.randomUUID();
