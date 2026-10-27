@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Bewusste Ausnahmen für SpotBugs/FindSecBugs.
+  Jede Ausnahme braucht eine Begründung - Sicherheitsfunde nie pauschal ausschließen.
+-->
+<FindBugsFilter>
+    <!-- Bukkit übergibt Spieler/Plugin-Objekte per Referenz, das ist dort normal -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!--
+      Audit-Log in /arbeitszeit set: Spielernamen werden vor dem Loggen per
+      replaceAll("[\r\n]", "") von Zeilenumbrüchen befreit. FindSecBugs erkennt
+      diese Bereinigung nicht. Nur diese eine Methode ist ausgenommen.
+    -->
+    <Match>
+        <Class name="de.shyrshi.stempeluhr.ArbeitszeitBefehl"/>
+        <Method name="onCommand"/>
+        <Bug pattern="CRLF_INJECTION_LOGS"/>
+    </Match>
+</FindBugsFilter>

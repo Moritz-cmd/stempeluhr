@@ -1,0 +1,31 @@
+name: Stempeluhr
+version: '${version}'
+main: de.shyrshi.stempeluhr.Stempeluhr
+api-version: '26.3'
+description: Arbeitszeiterfassung - einstempeln beim Join, ausstempeln per Befehl oder beim Verlassen.
+author: shyrshi
+
+commands:
+  ausstempeln:
+    description: Beendet deine aktuelle Schicht und zeigt die Arbeitszeit an.
+    aliases: [ausstechen, clockout]
+    permission: stempeluhr.use
+  einstempeln:
+    description: Startet eine neue Schicht, falls du ausgestempelt bist.
+    aliases: [einstechen, clockin]
+    permission: stempeluhr.use
+  schicht:
+    description: Zeigt deine laufende Schicht und deine Gesamtarbeitszeit.
+    permission: stempeluhr.use
+  arbeitszeit:
+    description: Rangliste anzeigen sowie Gesamtarbeitszeit eines Spielers anzeigen oder setzen.
+    usage: /arbeitszeit <rangliste|set|get> [spieler] [dd hh mm ss]
+    permission: stempeluhr.use
+
+permissions:
+  stempeluhr.use:
+    description: Ein- und Ausstempeln, eigene Arbeitszeit und Rangliste ansehen.
+    default: true
+  stempeluhr.admin:
+    description: Gesamtarbeitszeit anderer Spieler ansehen und setzen (/arbeitszeit set|get).
+    default: op
