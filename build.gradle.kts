@@ -36,8 +36,11 @@ java {
 }
 
 tasks.processResources {
+    // Version beim Konfigurieren lesen: Task.project zur Ausführungszeit ist veraltet (Gradle 10)
+    val pluginVersion = project.version.toString()
+    inputs.property("version", pluginVersion)
     filesMatching("plugin.yml") {
-        expand("version" to project.version)
+        expand("version" to pluginVersion)
     }
 }
 
