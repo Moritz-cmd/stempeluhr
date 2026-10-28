@@ -2,7 +2,9 @@ package de.shyrshi.stempeluhr;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Location;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,6 +61,17 @@ class StempeluhrTest {
         jetzt.addAndGet(sekunden * 1000);
     }
 
+    /** Simuliert eine aktive Schicht mit Positionsänderungen spätestens alle vier Minuten. */
+    private void aktivVergehen(PlayerMock p, long sekunden) {
+        while (sekunden > 0) {
+            long schritt = Math.min(4 * 60, sekunden);
+            vergehen(schritt);
+            Location von = p.getLocation();
+            server.getPluginManager().callEvent(new PlayerMoveEvent(p, von, von.clone().add(1, 0, 0)));
+            sekunden -= schritt;
+        }
+    }
+
     // ------------------------------------------------------------ Funktion
 
     @Nested
@@ -79,7 +92,7 @@ class StempeluhrTest {
         void ausstempelnZeigtDauer() {
             PlayerMock p = server.addPlayer();
             nachrichten(p);
-            vergehen(2 * 3600 + 5 * 60 + 12);
+            aktivVergehen(p, 2 * 3600 + 5 * 60 + 12);
 
             assertTrue(p.performCommand("ausstempeln"));
 
@@ -109,7 +122,7 @@ class StempeluhrTest {
         void doppeltesEinstempeln() {
             PlayerMock p = server.addPlayer();
             long start = plugin.daten().get(p.getUniqueId()).schichtStart;
-            vergehen(300);
+            vergehen(299);
 
             p.performCommand("einstempeln");
 
@@ -121,7 +134,7 @@ class StempeluhrTest {
         @DisplayName("Verlassen stempelt aus, Rejoin zeigt die letzte Schicht")
         void quitUndRejoin() {
             PlayerMock p = server.addPlayer();
-            vergehen(45 * 60);
+            aktivVergehen(p, 45 * 60);
 
             p.disconnect();
             assertFalse(plugin.daten().get(p.getUniqueId()).istEingestempelt());
@@ -146,6 +159,26 @@ class StempeluhrTest {
             server.addPlayer(p);
 
             assertEquals(6 * 60_000, e.letzteSchicht);
+            assertTrue(enthaelt(nachrichten(p), "Serverabsturz"));
+        }
+
+        @Test
+        @DisplayName("Verwaiste Schicht wird beim Start beendet und wächst in der Rangliste nicht weiter")
+        void verwaisteSchichtBeimStart() {
+            PlayerMock p = new PlayerMock(server, "Anton");
+            StempelDaten.Eintrag e = plugin.daten().get(p.getUniqueId());
+            e.schichtStart = START - 10 * 60_000;
+            e.lebenszeichen = START - 4 * 60_000;
+
+            plugin.schliesseVerwaisteSchichten();
+            vergehen(60 * 60);
+
+            assertFalse(e.istEingestempelt());
+            assertEquals(6 * 60_000, e.gesamt);
+            assertEquals(6 * 60_000, ArbeitszeitBefehl.berechneRangliste(
+                    plugin.daten().alle(), plugin.jetzt()).getFirst().zeit());
+
+            server.addPlayer(p);
             assertTrue(enthaelt(nachrichten(p), "Serverabsturz"));
         }
 
@@ -284,7 +317,7 @@ class StempeluhrTest {
             admin.setOp(true);
             PlayerMock ziel = server.addPlayer("Leon");
             admin.performCommand("arbeitszeit set Leon 00 01 00 00");
-            vergehen(600);
+            aktivVergehen(ziel, 600);
 
             ziel.performCommand("ausstempeln");
 
@@ -357,7 +390,7 @@ class StempeluhrTest {
             anna.performCommand("ausstempeln");
             plugin.daten().get(anna.getUniqueId()).gesamt = 10 * 60_000;   // 10 Min, ausgestempelt
             plugin.daten().get(ben.getUniqueId()).gesamt = 5 * 60_000;     // 5 Min + laufende Schicht
-            vergehen(10 * 60);
+            aktivVergehen(ben, 10 * 60);
             nachrichten(ben);
 
             assertTrue(ben.performCommand("arbeitszeit rangliste"));
