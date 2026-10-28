@@ -6,6 +6,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ZeitAuswertungTest {
 
@@ -62,5 +64,13 @@ class ZeitAuswertungTest {
         ZeitAuswertung.verbuche(e, zeit(2026, 10, 28, 12, 0), zeit(2026, 10, 28, 12, 30));
 
         assertEquals(90 * 60_000L, ZeitAuswertung.heute(e, zeit(2026, 10, 28, 13, 0)));
+    }
+
+    @Test
+    void pathologischLangesIntervallWirdVorVerbuchungAbgelehnt() {
+        StempelDaten.Eintrag e = new StempelDaten.Eintrag();
+
+        assertThrows(IllegalStateException.class, () -> ZeitAuswertung.verbuche(e, 1, Long.MAX_VALUE));
+        assertTrue(e.tage.isEmpty());
     }
 }

@@ -39,8 +39,8 @@ Mit LuckPerms z. B.: `/lp user Leon permission set stempeluhr.admin true`
 
 ## Verhalten
 
-- **Join:** automatisch eingestempelt, mit Anzeige der letzten Schicht.
-- **AFK:** Nach fünf Minuten ohne Positionsänderung endet die Schicht. Die erste erneute Bewegung startet automatisch eine neue Schicht; die Pause dazwischen zählt nicht. Kameradrehungen und Teleports zählen nicht als Bewegung. `/ausstempeln` beendet ein ausstehendes automatisches Wiedereinstempeln.
+- **Join:** Bei frischer Bewegung automatisch eingestempelt, mit Anzeige der letzten Schicht. Nach einer abgelaufenen Bewegungsfrist beginnt die neue Schicht erst mit der nächsten Bewegung.
+- **AFK:** Nach fünf Minuten ohne Positionsänderung endet die Schicht. Die erste erneute Bewegung startet automatisch eine neue Schicht; die Pause dazwischen zählt nicht. Kameradrehungen und Teleports zählen nicht als Bewegung. Ein-/Ausstempelbefehle und erneutes Verbinden setzen die Bewegungsfrist nicht zurück.
 - **Quit / Server-Stopp:** automatisch ausgestempelt.
 - **Serverabsturz:** Jede Minute wird ein Zwischenstand gespeichert. Nach einem Absturz endet die offene Schicht beim letzten Zwischenstand, es geht also höchstens ca. 1 Minute verloren.
 - **Daten:** `plugins/Stempeluhr/daten.yml`

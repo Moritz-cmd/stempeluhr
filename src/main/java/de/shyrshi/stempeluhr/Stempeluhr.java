@@ -18,7 +18,6 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -32,7 +31,6 @@ public class Stempeluhr extends JavaPlugin implements Listener {
     private static final long INAKTIVITAET_MS = 5 * 60_000L;
 
     private StempelDaten daten;
-    private final Map<UUID, Long> letzteBewegung = new HashMap<>();
     private final Set<UUID> nachAbsturzBeendet = new HashSet<>();
 
     /** Zeitquelle in ms. Im Plugin die Systemuhr, in Tests austauschbar. */
@@ -72,13 +70,21 @@ public class Stempeluhr extends JavaPlugin implements Listener {
             ranglisteBefehl.setTabCompleter(rangliste);
         }
 
-        // Reload-Fall: bereits online Spieler direkt einstempeln
+        // Reload-Fall: bereits online Spieler nur mit frischer Bewegung einstempeln.
+        boolean geaendert = false;
         for (Player p : Bukkit.getOnlinePlayers()) {
             StempelDaten.Eintrag e = daten.get(p.getUniqueId());
             if (e.warteAufBewegung) continue;
-            if (!e.istEingestempelt()) einstempeln(p, e, uhr.getAsLong());
-            else letzteBewegung.put(p.getUniqueId(), uhr.getAsLong());
+            long jetzt = uhr.getAsLong();
+            if (e.letzteBewegung >= 0 && jetzt - e.letzteBewegung >= INAKTIVITAET_MS) {
+                e.warteAufBewegung = true;
+                geaendert = true;
+            } else if (!e.istEingestempelt()) {
+                einstempeln(e, jetzt);
+                geaendert = true;
+            }
         }
+        if (geaendert) daten.speichern();
 
         // Jede Minute ein "Lebenszeichen" speichern, damit bei einem Absturz
         // höchstens ~1 Minute Arbeitszeit verloren geht.
@@ -93,12 +99,11 @@ public class Stempeluhr extends JavaPlugin implements Listener {
         for (Player p : Bukkit.getOnlinePlayers()) {
             StempelDaten.Eintrag e = daten.get(p.getUniqueId());
             if (e.istEingestempelt()) {
-                long letzte = letzteBewegung.getOrDefault(p.getUniqueId(), jetzt);
+                long letzte = e.letzteBewegung >= 0 ? e.letzteBewegung : jetzt;
                 if (jetzt - letzte >= INAKTIVITAET_MS) e.warteAufBewegung = true;
                 ausstempeln(e, Math.min(jetzt, letzte + INAKTIVITAET_MS));
             }
         }
-        letzteBewegung.clear();
         nachAbsturzBeendet.clear();
         daten.speichern();
     }
@@ -138,12 +143,11 @@ public class Stempeluhr extends JavaPlugin implements Listener {
     }
 
     private boolean pruefeInaktivitaet(Player p, StempelDaten.Eintrag e, long jetzt) {
-        UUID uuid = p.getUniqueId();
-        long letzte = letzteBewegung.computeIfAbsent(uuid, ignoriert -> jetzt);
+        if (e.letzteBewegung < 0) e.letzteBewegung = jetzt;
+        long letzte = e.letzteBewegung;
         if (jetzt - letzte < INAKTIVITAET_MS) return false;
 
         ausstempeln(e, letzte + INAKTIVITAET_MS);
-        letzteBewegung.remove(uuid);
         e.warteAufBewegung = true;
         senden(p, "<red>Arbeitszeit betrug du wirst ausgestochen");
         return true;
@@ -173,10 +177,16 @@ public class Stempeluhr extends JavaPlugin implements Listener {
                     Placeholder.unparsed("dauer", formatiere(e.letzteSchicht)));
         }
 
+        // Reconnects dürfen die Fünf-Minuten-Frist nicht erneut starten.
+        if (!e.warteAufBewegung && e.letzteBewegung >= 0
+                && jetzt - e.letzteBewegung >= INAKTIVITAET_MS) {
+            e.warteAufBewegung = true;
+        }
+
         if (e.warteAufBewegung) {
             senden(p, "<yellow>Bewege dich, dann wirst du automatisch für eine neue Schicht eingestempelt.");
         } else {
-            einstempeln(p, e, jetzt);
+            einstempeln(e, jetzt);
             senden(p, "<green>Du wurdest eingestempelt. <gray>Beende die Schicht mit <white>/ausstempeln</white>.");
         }
         daten.speichern();
@@ -199,15 +209,15 @@ public class Stempeluhr extends JavaPlugin implements Listener {
         StempelDaten.Eintrag e = daten.get(uuid);
         long jetzt = uhr.getAsLong();
         if (e.istEingestempelt()) pruefeInaktivitaet(p, e, jetzt);
+        e.letzteBewegung = jetzt;
         if (!e.istEingestempelt() && e.warteAufBewegung) {
             // Falls diese Bewegung erst nach der Frist kommt, beginnt die neue
             // Schicht jetzt. Die inaktive Zeit dazwischen bleibt ungezählt.
-            einstempeln(p, e, jetzt);
+            einstempeln(e, jetzt);
             daten.speichern();
             senden(p, "<green>Du wurdest nach deiner Bewegung automatisch eingestempelt.");
             return;
         }
-        if (e.istEingestempelt()) letzteBewegung.put(uuid, jetzt);
     }
 
     @EventHandler
@@ -215,12 +225,11 @@ public class Stempeluhr extends JavaPlugin implements Listener {
         StempelDaten.Eintrag e = daten.get(event.getPlayer().getUniqueId());
         if (e.istEingestempelt()) {
             long jetzt = uhr.getAsLong();
-            long letzte = letzteBewegung.getOrDefault(event.getPlayer().getUniqueId(), jetzt);
+            long letzte = e.letzteBewegung >= 0 ? e.letzteBewegung : jetzt;
             if (jetzt - letzte >= INAKTIVITAET_MS) e.warteAufBewegung = true;
             ausstempeln(e, Math.min(jetzt, letzte + INAKTIVITAET_MS));
-            daten.speichern();
         }
-        letzteBewegung.remove(event.getPlayer().getUniqueId());
+        daten.speichern();
     }
 
     // ---------------------------------------------------------------- Befehle
@@ -239,19 +248,17 @@ public class Stempeluhr extends JavaPlugin implements Listener {
             case "ausstempeln" -> {
                 if (!e.istEingestempelt()) {
                     if (e.warteAufBewegung) {
-                        e.warteAufBewegung = false;
-                        daten.speichern();
+                        senden(p, "<red>Du bist wegen AFK ausgestempelt. <gray>Bewege dich, dann wirst du automatisch eingestempelt.");
+                    } else {
+                        senden(p, "<red>Du bist gerade nicht eingestempelt. <gray>Nutze <white>/einstempeln</white>.");
                     }
-                    senden(p, "<red>Du bist gerade nicht eingestempelt. <gray>Nutze <white>/einstempeln</white>.");
                     return true;
                 }
                 if (pruefeInaktivitaet(p, e, jetzt)) {
-                    e.warteAufBewegung = false; // ausdrückliches Ausstempeln beendet Auto-Resume
                     daten.speichern();
                     return true;
                 }
                 long dauer = ausstempeln(e, jetzt);
-                letzteBewegung.remove(p.getUniqueId());
                 daten.speichern();
                 senden(p, "<green>Ausgestempelt! <gray>Du hast <gold><dauer></gold> gearbeitet.",
                         Placeholder.unparsed("dauer", formatiere(dauer)));
@@ -272,7 +279,11 @@ public class Stempeluhr extends JavaPlugin implements Listener {
                             Placeholder.unparsed("dauer", formatiere(jetzt - e.schichtStart)));
                     return true;
                 }
-                einstempeln(p, e, jetzt);
+                if (e.letzteBewegung >= 0 && jetzt - e.letzteBewegung >= INAKTIVITAET_MS) {
+                    senden(p, "<red>Bewege dich zuerst, bevor du dich erneut einstempelst.");
+                    return true;
+                }
+                einstempeln(e, jetzt);
                 daten.speichern();
                 senden(p, "<green>Du wurdest eingestempelt.");
             }
@@ -309,10 +320,10 @@ public class Stempeluhr extends JavaPlugin implements Listener {
 
     // ---------------------------------------------------------------- Logik
 
-    private void einstempeln(Player p, StempelDaten.Eintrag e, long zeitpunkt) {
+    private void einstempeln(StempelDaten.Eintrag e, long zeitpunkt) {
         e.schichtStart = zeitpunkt;
         e.lebenszeichen = zeitpunkt;
-        letzteBewegung.put(p.getUniqueId(), zeitpunkt);
+        if (e.letzteBewegung < 0) e.letzteBewegung = zeitpunkt;
         e.warteAufBewegung = false;
     }
 
@@ -321,7 +332,12 @@ public class Stempeluhr extends JavaPlugin implements Listener {
         long dauer = Math.max(0, ende - e.schichtStart);
         ZeitAuswertung.verbuche(e, e.schichtStart, ende);
         e.letzteSchicht = dauer;
-        e.gesamt += dauer;
+        if (e.gesamt > Long.MAX_VALUE - dauer) {
+            e.gesamt = Long.MAX_VALUE;
+            getLogger().warning("Gesamtarbeitszeit hat den darstellbaren Höchstwert erreicht.");
+        } else {
+            e.gesamt += dauer;
+        }
         e.schichtStart = -1;
         e.lebenszeichen = -1;
         return dauer;

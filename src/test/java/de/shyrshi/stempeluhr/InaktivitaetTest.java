@@ -215,15 +215,74 @@ class InaktivitaetTest {
     }
 
     @Test
-    void ausdruecklichesAusstempelnBeendetAutomatischesWiedereinstempeln() {
+    void ausstempelnNachAfkHebtBewegungssperreNichtAuf() {
         PlayerMock p = server.addPlayer("Anton");
         jetzt.addAndGet(300_000);
         plugin.pruefeInaktivitaet();
 
         p.performCommand("ausstempeln");
+        p.performCommand("einstempeln");
+        assertFalse(plugin.daten().get(p.getUniqueId()).istEingestempelt());
+
         bewegen(p, true);
 
-        assertFalse(plugin.daten().get(p.getUniqueId()).istEingestempelt());
+        assertTrue(plugin.daten().get(p.getUniqueId()).istEingestempelt());
+    }
+
+    @Test
+    void befehlspaarVorAfkSetztBewegungsfristNichtZurueck() {
+        PlayerMock p = server.addPlayer("Anton");
+        StempelDaten.Eintrag e = plugin.daten().get(p.getUniqueId());
+        jetzt.addAndGet(299_000);
+
+        p.performCommand("ausstempeln");
+        p.performCommand("einstempeln");
+        assertTrue(e.istEingestempelt());
+        assertEquals(START, e.letzteBewegung);
+
+        jetzt.addAndGet(1_000);
+        plugin.pruefeInaktivitaet();
+
+        assertFalse(e.istEingestempelt());
+        assertEquals(300_000, e.gesamt);
+    }
+
+    @Test
+    void reconnectVorFristSetztBewegungsfristNichtZurueck() {
+        PlayerMock p = server.addPlayer("Anton");
+        StempelDaten.Eintrag e = plugin.daten().get(p.getUniqueId());
+        jetzt.addAndGet(240_000);
+
+        p.disconnect();
+        p.reconnect();
+        assertTrue(e.istEingestempelt());
+        assertEquals(START, e.letzteBewegung);
+
+        jetzt.addAndGet(60_000);
+        p.disconnect();
+        p.reconnect();
+
+        assertFalse(e.istEingestempelt());
+        assertTrue(e.warteAufBewegung);
+        assertEquals(300_000, e.gesamt);
+        bewegen(p, true);
+        assertTrue(e.istEingestempelt());
+        assertEquals(START + 300_000, e.schichtStart);
+    }
+
+    @Test
+    void bewegungImManuellAusgestempeltenZustandErlaubtNeuenStart() {
+        PlayerMock p = server.addPlayer("Anton");
+        StempelDaten.Eintrag e = plugin.daten().get(p.getUniqueId());
+        p.performCommand("ausstempeln");
+        jetzt.addAndGet(600_000);
+
+        p.performCommand("einstempeln");
+        assertFalse(e.istEingestempelt());
+        bewegen(p, true);
+        assertFalse(e.istEingestempelt());
+        p.performCommand("einstempeln");
+        assertTrue(e.istEingestempelt());
     }
 
     @Test

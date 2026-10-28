@@ -10,6 +10,7 @@ import java.time.temporal.TemporalAdjusters;
 final class ZeitAuswertung {
 
     static final ZoneId ZEITZONE = ZoneId.of("Europe/Berlin");
+    static final long MAX_SCHICHT_DAUER_MS = 366L * 86_400_000L;
 
     private ZeitAuswertung() {
     }
@@ -24,6 +25,7 @@ final class ZeitAuswertung {
 
     /** Verteilt eine abgeschlossene Schicht auf die betroffenen Kalendertage. */
     static void verbuche(StempelDaten.Eintrag eintrag, long start, long ende) {
+        pruefeIntervall(start, ende);
         long cursor = start;
         while (cursor < ende) {
             LocalDate tag = datum(cursor);
@@ -32,6 +34,14 @@ final class ZeitAuswertung {
             long dauer = abschnittEnde - cursor;
             eintrag.tage.merge(tag, dauer, ZeitAuswertung::addiereOhneUeberlauf);
             cursor = abschnittEnde;
+        }
+    }
+
+    /** Begrenzung vor der Tag-für-Tag-Verbuchung verhindert endlose Startphasen bei defekten Daten. */
+    static void pruefeIntervall(long start, long ende) {
+        if (ende <= start) return;
+        if (start < 0 || ende < 0 || ende - start > MAX_SCHICHT_DAUER_MS) {
+            throw new IllegalStateException("Ungültige Schichtdauer: " + start + " bis " + ende);
         }
     }
 
