@@ -11,9 +11,12 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -25,6 +28,8 @@ import java.util.logging.Level;
  *  - lebenszeichen: zuletzt bekannter Zeitpunkt online (für Absturz-Wiederherstellung)
  *  - letzteSchicht: Dauer der zuletzt beendeten Schicht (ms)
  *  - gesamt       : Summe aller beendeten Schichten (ms)
+ *  - tage         : Abgeschlossene Arbeitszeit pro Datum in Europe/Berlin
+ *  - warteAufBewegung: Nach AFK-Timeout erst bei Bewegung neu einstempeln
  */
 final class StempelDaten {
 
@@ -33,6 +38,8 @@ final class StempelDaten {
         long lebenszeichen = -1;
         long letzteSchicht = -1;
         long gesamt = 0;
+        final Map<LocalDate, Long> tage = new TreeMap<>();
+        boolean warteAufBewegung;
 
         boolean istEingestempelt() {
             return schichtStart > 0;
@@ -108,6 +115,36 @@ final class StempelDaten {
                 e.lebenszeichen = leseZeit(s, "lebenszeichen", -1);
                 e.letzteSchicht = leseZeit(s, "letzteSchicht", -1);
                 e.gesamt = Math.max(0, leseZeit(s, "gesamt", 0));   // manipulierte negative Werte abfangen
+                Object wartend = s.get("warteAufBewegung");
+                if (s.getKeys(false).contains("warteAufBewegung")) {
+                    if (!(wartend instanceof Boolean)) {
+                        throw new IllegalStateException("Ungültiger AFK-Status in " + DATEINAME + ": " + key);
+                    }
+                    e.warteAufBewegung = (Boolean) wartend;
+                }
+                if (e.warteAufBewegung && e.istEingestempelt()) {
+                    throw new IllegalStateException("Widersprüchlicher AFK-Status in " + DATEINAME + ": " + key);
+                }
+
+                if (s.getKeys(false).contains("tage")) {
+                    ConfigurationSection tage = s.getConfigurationSection("tage");
+                    if (tage == null) {
+                        throw new IllegalStateException("Ungültige Tageszeiten in " + DATEINAME + ": " + key);
+                    }
+                    for (String datumText : tage.getKeys(false)) {
+                        LocalDate datum;
+                        try {
+                            datum = LocalDate.parse(datumText);
+                        } catch (DateTimeParseException ex) {
+                            throw new IllegalStateException("Ungültiges Datum in " + DATEINAME + ": " + datumText, ex);
+                        }
+                        long dauer = leseZeit(tage, datumText, -1);
+                        if (dauer < 0) {
+                            throw new IllegalStateException("Negative Tageszeit in " + DATEINAME + ": " + datumText);
+                        }
+                        e.tage.put(datum, dauer);
+                    }
+                }
                 geladen.put(uuid, e);
             }
         }
@@ -143,6 +180,10 @@ final class StempelDaten {
             }
             if (e.letzteSchicht >= 0) yml.set(pfad + ".letzteSchicht", e.letzteSchicht);
             yml.set(pfad + ".gesamt", e.gesamt);
+            for (Map.Entry<LocalDate, Long> tag : e.tage.entrySet()) {
+                yml.set(pfad + ".tage." + tag.getKey(), tag.getValue());
+            }
+            if (e.warteAufBewegung) yml.set(pfad + ".warteAufBewegung", true);
         }
         Path temporaer = null;
         Path backupTemporaer = null;

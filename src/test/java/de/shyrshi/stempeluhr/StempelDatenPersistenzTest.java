@@ -10,11 +10,13 @@ import org.mockbukkit.mockbukkit.ServerMock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StempelDatenPersistenzTest {
 
@@ -60,7 +62,12 @@ class StempelDatenPersistenzTest {
         String[] defekteDateien = {
                 "spieler:\n  " + uuid + ": kaputt\n",
                 "spieler:\n  " + uuid + ":\n    gesamt: kaputt\n",
-                "spieler:\n  " + uuid + ":\n    letzteSchicht: 1000\n"
+                "spieler:\n  " + uuid + ":\n    letzteSchicht: 1000\n",
+                "spieler:\n  " + uuid + ":\n    gesamt: 1000\n    tage: kaputt\n",
+                "spieler:\n  " + uuid + ":\n    gesamt: 1000\n    tage:\n      falsch: 1000\n",
+                "spieler:\n  " + uuid + ":\n    gesamt: 1000\n    tage:\n      2026-10-28: -1\n",
+                "spieler:\n  " + uuid + ":\n    gesamt: 1000\n    warteAufBewegung: kaputt\n",
+                "spieler:\n  " + uuid + ":\n    gesamt: 1000\n    schichtStart: 1000\n    warteAufBewegung: true\n"
         };
 
         for (String inhalt : defekteDateien) {
@@ -98,5 +105,21 @@ class StempelDatenPersistenzTest {
                 .getLong("spieler." + uuid + ".gesamt"));
         assertEquals(120_000, YamlConfiguration.loadConfiguration(datei.toFile())
                 .getLong("spieler." + uuid + ".gesamt"));
+    }
+
+    @Test
+    void tageszeitenUndAfkStatusBleibenNachNeuladenErhalten() {
+        UUID uuid = UUID.randomUUID();
+        StempelDaten.Eintrag eintrag = plugin.daten().get(uuid);
+        eintrag.gesamt = 90_000;
+        eintrag.tage.put(LocalDate.of(2026, 10, 28), 90_000L);
+        eintrag.warteAufBewegung = true;
+        plugin.daten().speichern();
+
+        StempelDaten neu = new StempelDaten(plugin);
+        neu.laden();
+
+        assertEquals(90_000L, neu.get(uuid).tage.get(LocalDate.of(2026, 10, 28)));
+        assertTrue(neu.get(uuid).warteAufBewegung);
     }
 }
